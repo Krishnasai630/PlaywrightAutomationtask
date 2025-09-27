@@ -1,1 +1,19 @@
+# Maven target directory
 /target/
+
+# Playwright drivers or libraries
+/lib/
+*.jar
+
+# Logs
+*.log
+
+# IDE files
+.idea/
+.vscode/
+*.iml
+
+# OS files
+.DS_Store
+Thumbs.db
+
