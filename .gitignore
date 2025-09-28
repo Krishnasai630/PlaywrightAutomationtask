@@ -2,8 +2,7 @@
 /target/
 
 # Playwright drivers or libraries
-/lib/
-*.jar
+lib/*.jar
 
 # Logs
 *.log
