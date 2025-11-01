@@ -1,30 +1,29 @@
 package playwrightTrianing;
 
-import com.microsoft.playwright.Browser;
-import com.microsoft.playwright.BrowserType;
-import com.microsoft.playwright.Page;
-import com.microsoft.playwright.Playwright;
+import org.testng.annotations.Test;
 
-public class LearningAutomation {
+import com.playwright.BaseSetup;
 
-	public static void main(String[] args) {
-		
-		Playwright pl= Playwright.create();
-		
-		BrowserType bt= pl.chromium();// TODO Auto-generated method stub
-		
-		Browser br = bt.launch(new BrowserType.LaunchOptions().setHeadless(false));
-		
-		Page pg = br.newPage();
-		
-		 pg.navigate("https://opensource-demo.orangehrmlive.com/");
-		 
-		 System.out.println("=== VALIDATION: Page Title is >>> " + pg.title() + " ===");
-		 
-		 br.close();
-		 
-		 pl.close();
-		 
+import pages.HomePage;
+import pages.LoginPage;
+
+/** TestNG test that demonstrates login using the POM and BaseSetup. */
+public class LearningAutomation extends BaseSetup {
+
+	@Test(description = "Smoke test: login to OrangeHRM and verify dashboard")
+	public void loginSmokeTest() {
+		String url = "https://opensource-demo.orangehrmlive.com/";
+		String username = "Admin";
+		String password = "admin123";
+
+		LoginPage login = new LoginPage(getPage());
+		HomePage home = new HomePage(getPage());
+
+		login.login(url, username, password);
+
+		System.out.println("Page title after login: " + title());
+		System.out.println("Dashboard visible: " + home.isDashboardVisible());
+		System.out.println("Welcome message visible: " + home.isWelcomeMessageVisible());
 	}
-
 }
+
