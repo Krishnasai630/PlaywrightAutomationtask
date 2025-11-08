@@ -33,6 +33,13 @@ public class BaseSetup implements AutoCloseable {
 	protected static ExtentReports extent;
 	protected static ExtentTest testReporter;
 
+	/**
+	 * Public accessor for tests and page objects to log to the current ExtentTest.
+	 */
+	public static ExtentTest getTestReporter() {
+		return testReporter;
+	}
+
 	@BeforeSuite(alwaysRun = true)
 	public void beforeSuite() {
 		// initialize ExtentReports
