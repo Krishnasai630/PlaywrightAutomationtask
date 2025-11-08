@@ -28,6 +28,8 @@ public class BaseSetup implements AutoCloseable {
 	private Browser browser;
 	private BrowserContext context;
 	private Page page;
+	private static String platformName;
+	private static String platformVersion;
 
 	// Extent reporting
 	protected static ExtentReports extent;
@@ -66,15 +68,35 @@ public class BaseSetup implements AutoCloseable {
 	 * videos will land under target/videos.
 	 */
 	public void init() {
+		// Get platform configuration from system properties
+		platformName = System.getProperty("platformName", "windows10");
+		platformVersion = System.getProperty("platformVersion", "10");
+
 		playwright = Playwright.create();
 		BrowserType browserType = playwright.chromium();
-		browser = browserType.launch(new BrowserType.LaunchOptions().setHeadless(false));
+		
+		// Configure browser launch options based on platform
+		BrowserType.LaunchOptions launchOptions = new BrowserType.LaunchOptions()
+				.setHeadless(false);
+				
+		// Add platform-specific configurations
+		if (platformName.equalsIgnoreCase("windows10")) {
+			launchOptions.setChannel("msedge");  // Use Edge on Windows 10
+		} else if (platformName.equalsIgnoreCase("windows11")) {
+			launchOptions.setChannel("chrome");  // Use Chrome on Windows 11
+		}
+		
+		browser = browserType.launch(launchOptions);
 
-		// enable video recording for the context and set the output directory
-	Browser.NewContextOptions contextOptions = new Browser.NewContextOptions()
-		.setRecordVideoDir(Paths.get("target", "videos"));
+		// Create context with platform-specific settings
+		Browser.NewContextOptions contextOptions = new Browser.NewContextOptions()
+				.setRecordVideoDir(Paths.get("target", "videos"))
+				.setViewportSize(1920, 1080);
+				
+		// Add platform metadata
+		contextOptions.setUserAgent("Playwright-Java/" + platformName + "/" + platformVersion);
 
-	context = browser.newContext(contextOptions);
+		context = browser.newContext(contextOptions);
 		page = context.newPage();
 	}
 
