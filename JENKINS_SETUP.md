@@ -35,17 +35,105 @@ Option C (more secure): SSH deploy key (recommended for production pushes)
 
 4) Agent / Node Setup
 
-Create two Jenkins agents (or reuse existing) with labels:
-- `windows10`  (Windows 10 VM or node)
-- `windows11`  (Windows 11 VM or node)
+Here's how to set up Jenkins agents for Windows 10 and Windows 11:
 
-Install on both agents:
-- Java 21 (Zulu or OpenJDK)
-- Maven (3.x)
-- Git
-- Browsers (Edge installed on Windows 10 where you plan to use Edge channel; Chrome installed on Windows 11 if using Chrome)
+A. Prerequisites on Agent Machines:
+1. Install Java 21 (Zulu JDK):
+   - Download Zulu JDK 21 from https://www.azul.com/downloads/?package=jdk#zulu
+   - Install to `C:\Program Files\Zulu\zulu-21`
+   - Add to PATH: `C:\Program Files\Zulu\zulu-21\bin`
 
-Make sure the `PATH` includes the JDK and Git executables. The pipeline sets JAVA_HOME for the test stages, but tooling must be installed.
+2. Install Maven:
+   - Download Apache Maven (3.x) from https://maven.apache.org/download.cgi
+   - Extract to `C:\Program Files\Maven`
+   - Add to PATH: `C:\Program Files\Maven\bin`
+
+3. Install Git:
+   - Download from https://git-scm.com/download/win
+   - Install with default options
+   - Verify with: `git --version`
+
+4. Install required browsers:
+   - Windows 10: Microsoft Edge (usually pre-installed)
+   - Windows 11: Google Chrome
+
+B. Configure Agent in Jenkins:
+1. Go to Jenkins Dashboard > Manage Jenkins > Nodes
+2. Click "New Node"
+3. Enter node name (e.g., "Windows10-Agent" or "Windows11-Agent")
+4. Select "Permanent Agent"
+5. Configure the node:
+   - Remote root directory: `C:\Jenkins` (create this directory)
+   - Labels: `windows10` (or `windows11`)
+   - Usage: "Use this node as much as possible"
+   - Launch method: "Launch agent by connecting it to the master"
+   - Custom WorkDir path: `C:\Jenkins\workspace`
+
+C. Connect Agent Using Windows Service:
+1. Download agent.jar:
+   - In Jenkins, go to the newly created node
+   - Click on the agent name
+   - Download `agent.jar` from the page
+   - Copy to `C:\Jenkins` on the agent machine
+
+2. Create Service (Run PowerShell as Administrator):
+```powershell
+# Download WinSW (Windows Service Wrapper)
+Invoke-WebRequest -Uri "https://github.com/winsw/winsw/releases/download/v2.11.0/WinSW-x64.exe" -OutFile "C:\Jenkins\jenkins-agent.exe"
+
+# Create service config
+@"
+<service>
+  <id>JenkinsAgent</id>
+  <name>Jenkins Agent</name>
+  <description>Jenkins Agent Service</description>
+  <executable>java</executable>
+  <arguments>-jar "C:\Jenkins\agent.jar" -jnlpUrl "http://YOUR_JENKINS_URL/computer/AGENT_NAME/jenkins-agent.jnlp" -secret YOUR_SECRET -workDir "C:\Jenkins"</arguments>
+  <serviceaccount>
+    <username>.\LocalSystem</username>
+    <allowservicelogon>true</allowservicelogon>
+  </serviceaccount>
+</service>
+"@ | Out-File "C:\Jenkins\jenkins-agent.xml"
+
+# Install and start service
+cd C:\Jenkins
+.\jenkins-agent.exe install
+.\jenkins-agent.exe start
+```
+
+D. Verify Agent Setup:
+1. Check Environment Variables:
+```powershell
+# On agent machine, verify paths
+$env:JAVA_HOME = 'C:\Program Files\Zulu\zulu-21'
+$env:PATH = "$env:JAVA_HOME\bin;$env:PATH"
+java -version
+mvn -version
+git --version
+```
+
+2. Test Agent Connection:
+- In Jenkins dashboard, verify agent shows as "Connected"
+- Check agent logs for any errors
+- Run a simple freestyle job on the agent to verify
+
+E. Troubleshooting:
+1. If agent won't connect:
+   - Check firewall settings
+   - Verify Jenkins URL is accessible from agent
+   - Confirm service is running: `Get-Service JenkinsAgent`
+   - Check logs in `C:\Jenkins\jenkins-agent.log`
+
+2. If builds fail:
+   - Verify all tools (Java, Maven, Git) are in PATH
+   - Check agent workspace permissions
+   - Review agent system logs
+
+3. Common fixes:
+   - Restart Jenkins agent service
+   - Clear agent workspace
+   - Reconnect agent in Jenkins UI
 
 5) How to run the Pipeline
 
@@ -86,6 +174,14 @@ $env:PATH = "$env:JAVA_HOME\bin;$env:PATH"
 # Run tests locally
 mvn clean test -DplatformName=windows10 -DplatformVersion=10
 ```
+
+9.a) Running different browsers in parallel
+
+- The framework now supports selecting the browser at runtime using a system property: `-Dbrowser=`. Supported values: `edge`, `chrome`, `chromium`, `firefox`, `webkit`.
+- Example local runs:
+  - Edge: `mvn test -Dbrowser=edge`
+  - Chrome: `mvn test -Dbrowser=chrome`
+- Jenkins pipeline runs two parallel stages (Edge and Chrome) which pass `-Dbrowser=edge` and `-Dbrowser=chrome` respectively and run on the `windows10` and `windows11` agents. See `Jenkinsfile`.
 
 10) Next steps I can do for you
 

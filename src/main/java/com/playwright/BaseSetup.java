@@ -68,27 +68,59 @@ public class BaseSetup implements AutoCloseable {
 	 * videos will land under target/videos.
 	 */
 	public void init() {
-		// Get platform configuration from system properties
-		platformName = System.getProperty("platformName", "windows10");
-		platformVersion = System.getProperty("platformVersion", "10");
+        // Get platform configuration from system properties
+        platformName = System.getProperty("platformName", "windows10");
+        platformVersion = System.getProperty("platformVersion", "10");
 
-		playwright = Playwright.create();
-		BrowserType browserType = playwright.chromium();
-		
-		// Configure browser launch options based on platform
-		BrowserType.LaunchOptions launchOptions = new BrowserType.LaunchOptions()
-				.setHeadless(false);
-				
-		// Add platform-specific configurations
-		if (platformName.equalsIgnoreCase("windows10")) {
-			launchOptions.setChannel("msedge");  // Use Edge on Windows 10
-		} else if (platformName.equalsIgnoreCase("windows11")) {
-			launchOptions.setChannel("chrome");  // Use Chrome on Windows 11
-		}
-		
-		browser = browserType.launch(launchOptions);
+        // Allow tests to explicitly choose a browser via -Dbrowser=(chrome|edge|chromium|firefox|webkit)
+        String browserProp = System.getProperty("browser", "").trim().toLowerCase();
+        String headlessProp = System.getProperty("headless", "false").trim().toLowerCase();
+        boolean headless = headlessProp.equals("true");
 
-		// Create context with platform-specific settings
+        playwright = Playwright.create();
+
+        BrowserType browserType = playwright.chromium();
+        BrowserType.LaunchOptions launchOptions = new BrowserType.LaunchOptions().setHeadless(headless);
+
+        if (!browserProp.isEmpty()) {
+            switch (browserProp) {
+                case "edge":
+                    // Edge is Chromium-based, use chromium with msedge channel
+                    browserType = playwright.chromium();
+                    launchOptions.setChannel("msedge");
+                    break;
+                case "chrome":
+                    browserType = playwright.chromium();
+                    launchOptions.setChannel("chrome");
+                    break;
+                case "chromium":
+                    browserType = playwright.chromium();
+                    // no channel, use bundled/system chromium
+                    break;
+                case "firefox":
+                    browserType = playwright.firefox();
+                    break;
+                case "webkit":
+                    browserType = playwright.webkit();
+                    break;
+                default:
+                    // unknown value - fall back to platform mapping below
+                    browserProp = "";
+            }
+        }
+
+        // If browser not explicitly set, choose by platform
+        if (browserProp.isEmpty()) {
+            if (platformName.equalsIgnoreCase("windows10")) {
+                browserType = playwright.chromium();
+                launchOptions.setChannel("msedge");  // Use Edge on Windows 10
+            } else if (platformName.equalsIgnoreCase("windows11")) {
+                browserType = playwright.chromium();
+                launchOptions.setChannel("chrome");  // Use Chrome on Windows 11
+            }
+        }
+
+        browser = browserType.launch(launchOptions);		// Create context with platform-specific settings
 		Browser.NewContextOptions contextOptions = new Browser.NewContextOptions()
 				.setRecordVideoDir(Paths.get("target", "videos"))
 				.setViewportSize(1920, 1080);

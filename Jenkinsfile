@@ -41,148 +41,75 @@ pipeline {
                         // Pull latest changes from origin/master
                         bat 'git fetch origin || echo fetch-failed'
                         bat 'git checkout master || git checkout -b master'
-                        bat 'git pull origin master || echo no-remote-or-no-updates'
+                        pipeline {
+                            agent any
 
-                        // If AUTO_PUSH enabled, commit and push any local changes
-                        if (params.AUTO_PUSH.toBoolean()) {
-                            // Configure git user
-                            bat 'git config user.email "jenkins@example.com"'
-                            bat 'git config user.name "jenkins-ci"'
+                            tools {
+                                maven 'Maven3'
+                                jdk 'JDK21'
+                            }
 
-                            // Stage all changes
-                            bat 'git add -A'
+                            stages {
+                                stage('Checkout') {
+                                    steps {
+                                        // Use the SCM configured for the job (Pipeline script from SCM) or fallback to checkout scm
+                                        script { 
+                                            try {
+                                                checkout scm
+                                            } catch (e) {
+                                                echo "checkout scm failed: ${e.message}"
+                                            }
+                                        }
+                                    }
+                                }
 
-                            // If there are staged changes, commit and push using credentials
-                            // The following uses exitCode check via powershell
-                            bat 'powershell -Command "if ((git diff --cached --name-only) -ne '') { git commit -m \"'${params.COMMIT_MESSAGE}'\"; git push https://${env:GIT_USER}:${env:GIT_TOKEN}@${repoUrl.replaceFirst('https://','')} master } else { Write-Host \"No changes to commit\" }"'
-                        } else {
-                            echo 'AUTO_PUSH disabled; skipping push'
-                        }
-                    }
-                }
-            }
-        }
+                                stage('Build & Test') {
+                                    steps {
+                                        script {
+                                            // Ensure JAVA_HOME is set on the agent or set it here if needed
+                                            bat 'set JAVA_HOME=C:\\Program Files\\Zulu\\zulu-21 || echo JAVA_HOME already set'
+                                            bat 'set PATH=%JAVA_HOME%\\bin;%PATH%'
 
-        stage('Build') {
-            agent any
-            steps {
-                script {
-                    // Clean and compile
-                    bat 'mvn clean compile'
-                }
-            }
-        }
-        
-        stage('Test Execution') {
-            parallel {
-                stage('Windows 10') {
-                    when {
-                        expression { params.PLATFORM == 'ALL' || params.PLATFORM == 'WINDOWS_10' }
-                    }
-                    agent {
-                        node {
-                            label 'windows10'
-                        }
-                    }
-                    steps {
-                        script {
-                            try {
-                                // Set Java environment
-                                bat 'set JAVA_HOME=C:\\Program Files\\Zulu\\zulu-21'
-                                bat 'set PATH=%JAVA_HOME%\\bin;%PATH%'
-                                
-                                // Run tests with Windows 10 profile
-                                bat 'mvn test -DplatformName=windows10 -DplatformVersion=10'
-                            } catch (Exception e) {
-                                currentBuild.result = 'FAILURE'
-                                error("Windows 10 Test Execution Failed: ${e.message}")
+                                            // Build project (skip executing tests) then run the dynamic TestNG runner
+                                            // Step 1: compile main and test classes and package, without running tests
+                                            bat 'mvn -DskipTests clean package'
+
+                                            // Step 2: execute the DynamicTestNGRunner main class. Include test classpath so test classes are available.
+                                            bat 'mvn exec:java -Dexec.mainClass="com.playwright.DynamicTestNGRunner" -Dexec.classpathScope=test'
+                                        }
+                                    }
+                                    post {
+                                        always {
+                                            echo 'Build & Test stage finished'
+                                        }
+                                    }
+                                }
+
+                                stage('Publish Results') {
+                                    steps {
+                                        script {
+                                            // Archive artifacts and publish JUnit results
+                                            archiveArtifacts artifacts: 'target/surefire-reports/**/*', fingerprint: true
+                                            junit 'target/surefire-reports/TEST-*.xml'
+
+                                            // Generate and publish surefire HTML report if available
+                                            bat 'mvn surefire-report:report-only || echo report-only failed'
+                                            publishHTML([
+                                                allowMissing: true,
+                                                alwaysLinkToLastBuild: true,
+                                                keepAll: true,
+                                                reportDir: 'target/site',
+                                                reportFiles: 'surefire-report.html',
+                                                reportName: 'Test Report'
+                                            ])
+                                        }
+                                    }
+                                }
+                            }
+
+                            post {
+                                always {
+                                    echo "Pipeline finished with status: ${currentBuild.currentResult}"
+                                }
                             }
                         }
-                    }
-                    post {
-                        always {
-                            // Archive test reports
-                            archiveArtifacts artifacts: 'target/surefire-reports/**/*', fingerprint: true
-                            junit '**/target/surefire-reports/TEST-*.xml'
-                        }
-                    }
-                }
-
-                stage('Windows 11') {
-                    when {
-                        expression { params.PLATFORM == 'ALL' || params.PLATFORM == 'WINDOWS_11' }
-                    }
-                    agent {
-                        node {
-                            label 'windows11'
-                        }
-                    }
-                    steps {
-                        script {
-                            try {
-                                // Set Java environment
-                                bat 'set JAVA_HOME=C:\\Program Files\\Zulu\\zulu-21'
-                                bat 'set PATH=%JAVA_HOME%\\bin;%PATH%'
-                                
-                                // Run tests with Windows 11 profile
-                                bat 'mvn test -DplatformName=windows11 -DplatformVersion=11'
-                            } catch (Exception e) {
-                                currentBuild.result = 'FAILURE'
-                                error("Windows 11 Test Execution Failed: ${e.message}")
-                            }
-                        }
-                    }
-                    post {
-                        always {
-                            // Archive test reports
-                            archiveArtifacts artifacts: 'target/surefire-reports/**/*', fingerprint: true
-                            junit '**/target/surefire-reports/TEST-*.xml'
-                        }
-                    }
-                }
-            }
-        }
-
-        stage('Generate Report') {
-            agent any
-            steps {
-                script {
-                    // Merge reports from different platforms
-                    bat 'mvn surefire-report:report-only'
-                }
-            }
-            post {
-                always {
-                    // Publish the merged report
-                    publishHTML([
-                        allowMissing: false,
-                        alwaysLinkToLastBuild: true,
-                        keepAll: true,
-                        reportDir: 'target/site',
-                        reportFiles: 'surefire-report.html',
-                        reportName: 'Test Report'
-                    ])
-                }
-            }
-        }
-    }
-
-    post {
-        always {
-            node('master') {
-                // Send email notification
-                emailext (
-                    subject: "Test Execution Status: ${currentBuild.currentResult}",
-                    body: """
-                        Build Status: ${currentBuild.currentResult}
-                        Build Number: ${currentBuild.number}
-                        Build URL: ${env.BUILD_URL}
-                        
-                        Please check the build for more details.
-                    """,
-                    recipientProviders: [[$class: 'DevelopersRecipientProvider']]
-                )
-            }
-        }
-    }
-}
