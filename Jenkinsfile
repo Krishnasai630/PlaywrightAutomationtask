@@ -1,4 +1,73 @@
 pipeline {
+    agent any
+
+    tools {
+        maven 'Maven3'
+        jdk 'JDK21'
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                script { 
+                    try {
+                        checkout scm
+                    } catch (e) {
+                        echo "checkout scm failed: ${e.message}"
+                        // fallback: attempt a simple git clone if needed
+                    }
+                }
+            }
+        }
+
+        stage('Build & Run Tests') {
+            steps {
+                script {
+                    // Ensure Java is available on the agent; set JAVA_HOME if necessary
+                    bat 'set JAVA_HOME=C:\\Program Files\\Zulu\\zulu-21 || echo JAVA_HOME already set'
+                    bat 'set PATH=%JAVA_HOME%\\bin;%PATH%'
+
+                    // Build the project without running tests, then invoke the dynamic TestNG runner
+                    bat 'mvn -DskipTests clean package'
+                    bat 'mvn exec:java -Dexec.mainClass="com.playwright.DynamicTestNGRunner" -Dexec.classpathScope=test'
+                }
+            }
+            post {
+                always {
+                    echo 'Build & Run Tests stage finished'
+                }
+            }
+        }
+
+        stage('Publish Results') {
+            steps {
+                script {
+                    // Archive artifacts and publish JUnit results if present
+                    archiveArtifacts artifacts: 'target/surefire-reports/**/*', fingerprint: true
+                    junit 'target/surefire-reports/TEST-*.xml'
+
+                    // Generate and publish surefire HTML report (if surefire data exists)
+                    bat 'mvn surefire-report:report-only || echo report-only failed'
+                    publishHTML([
+                        allowMissing: true,
+                        alwaysLinkToLastBuild: true,
+                        keepAll: true,
+                        reportDir: 'target/site',
+                        reportFiles: 'surefire-report.html',
+                        reportName: 'Test Report'
+                    ])
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            echo "Pipeline finished with status: ${currentBuild.currentResult}"
+        }
+    }
+}
+pipeline {
     agent none
 
     tools {
